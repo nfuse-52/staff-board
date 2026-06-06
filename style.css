@@ -270,6 +270,60 @@ body {
   color: var(--danger);
 }
 
+/* 顔写真アップロード */
+.avatar-img {
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.avatar-upload {
+  background-color: var(--bg);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  overflow: hidden;
+  position: relative;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+
+.avatar-upload:hover,
+.avatar-upload.drag-over {
+  border-color: var(--accent);
+}
+
+.avatar-preview {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100px;
+  padding: 16px;
+}
+
+.avatar-upload.has-image .avatar-preview {
+  padding: 0;
+  min-height: 160px;
+}
+
+#avatarPreviewText {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+#avatarPreviewImg {
+  height: 160px;
+  object-fit: cover;
+  width: 100%;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.form-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
 /* モーダル */
 .modal-overlay {
   align-items: center;

@@ -52,6 +52,17 @@
           <label for="inputBio">一言・自己紹介</label>
           <textarea id="inputBio" placeholder="例：コーヒーが好きです。よろしくお願いします！" rows="3"></textarea>
         </div>
+        <div class="form-group">
+          <label for="inputAvatar">顔写真</label>
+          <div class="avatar-upload" id="avatarUpload">
+            <div class="avatar-preview" id="avatarPreview">
+              <span id="avatarPreviewText">クリックまたはドラッグで画像を選択</span>
+              <img id="avatarPreviewImg" src="" alt="プレビュー" style="display:none;">
+            </div>
+            <input type="file" id="inputAvatar" accept="image/*" style="display:none;">
+          </div>
+          <p class="form-hint">JPG・PNG・GIF・WEBP（5MB以内）</p>
+        </div>
         <div class="form-actions">
           <button type="button" class="btn-cancel" id="cancelBtn">キャンセル</button>
           <button type="submit" class="btn-save" id="saveBtn">保存</button>

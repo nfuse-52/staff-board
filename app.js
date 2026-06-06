@@ -12,6 +12,7 @@ const AVATAR_COLORS = [
 let allStaff = [];
 let deleteTargetId = null;
 let currentDept = 'all';
+let selectedFile = null;
 
 function getAvatarColor(name) {
   let hash = 0;
@@ -22,8 +23,7 @@ function getAvatarColor(name) {
 }
 
 function getInitial(name) {
-  const trimmed = name.trim();
-  return trimmed.charAt(0).toUpperCase();
+  return name.trim().charAt(0).toUpperCase();
 }
 
 function renderFilterButtons(staffList) {
@@ -46,7 +46,7 @@ function renderStaff() {
   const query = document.getElementById('searchInput').value.trim().toLowerCase();
   const grid = document.getElementById('staffGrid');
 
-  let filtered = allStaff.filter(s => {
+  const filtered = allStaff.filter(s => {
     const matchDept = currentDept === 'all' || s.department === currentDept;
     const matchSearch = !query
       || s.name.toLowerCase().includes(query)
@@ -59,25 +59,28 @@ function renderStaff() {
     return;
   }
 
-  grid.innerHTML = filtered.map(s => `
-    <div class="staff-card" data-id="${s.id}">
-      <div class="card-top">
-        <div class="avatar" style="background-color: ${getAvatarColor(s.name)}">
-          ${getInitial(s.name)}
+  grid.innerHTML = filtered.map(s => {
+    const avatarHtml = s.avatar_url
+      ? `<img class="avatar avatar-img" src="${escapeHtml(s.avatar_url)}" alt="${escapeHtml(s.name)}">`
+      : `<div class="avatar" style="background-color:${getAvatarColor(s.name)}">${getInitial(s.name)}</div>`;
+    return `
+      <div class="staff-card" data-id="${s.id}">
+        <div class="card-top">
+          ${avatarHtml}
+          <div class="card-info">
+            <div class="card-name">${escapeHtml(s.name)}</div>
+            <div class="card-position">${escapeHtml(s.position || '未設定')}</div>
+          </div>
         </div>
-        <div class="card-info">
-          <div class="card-name">${escapeHtml(s.name)}</div>
-          <div class="card-position">${escapeHtml(s.position || '未設定')}</div>
+        ${s.department ? `<div class="card-dept">${escapeHtml(s.department)}</div>` : ''}
+        ${s.bio ? `<div class="card-bio">${escapeHtml(s.bio)}</div>` : ''}
+        <div class="card-actions">
+          <button class="btn-edit" data-id="${s.id}">編集</button>
+          <button class="btn-delete" data-id="${s.id}">削除</button>
         </div>
       </div>
-      ${s.department ? `<div class="card-dept">${escapeHtml(s.department)}</div>` : ''}
-      ${s.bio ? `<div class="card-bio">${escapeHtml(s.bio)}</div>` : ''}
-      <div class="card-actions">
-        <button class="btn-edit" data-id="${s.id}">編集</button>
-        <button class="btn-delete" data-id="${s.id}">削除</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   grid.querySelectorAll('.btn-edit').forEach(btn => {
     btn.addEventListener('click', () => openEditModal(btn.dataset.id));
@@ -105,10 +108,31 @@ async function fetchStaff() {
   renderStaff();
 }
 
+function resetAvatarPreview(existingUrl = null) {
+  selectedFile = null;
+  const img = document.getElementById('avatarPreviewImg');
+  const text = document.getElementById('avatarPreviewText');
+  const upload = document.getElementById('avatarUpload');
+
+  if (existingUrl) {
+    img.src = existingUrl;
+    img.style.display = 'block';
+    text.style.display = 'none';
+    upload.classList.add('has-image');
+  } else {
+    img.src = '';
+    img.style.display = 'none';
+    text.style.display = 'block';
+    upload.classList.remove('has-image');
+  }
+  document.getElementById('inputAvatar').value = '';
+}
+
 function openAddModal() {
   document.getElementById('modalTitle').textContent = '社員を追加';
   document.getElementById('staffForm').reset();
   document.getElementById('editId').value = '';
+  resetAvatarPreview();
   document.getElementById('modalOverlay').classList.add('open');
 }
 
@@ -121,11 +145,13 @@ function openEditModal(id) {
   document.getElementById('inputDept').value = staff.department || '';
   document.getElementById('inputPosition').value = staff.position || '';
   document.getElementById('inputBio').value = staff.bio || '';
+  resetAvatarPreview(staff.avatar_url || null);
   document.getElementById('modalOverlay').classList.add('open');
 }
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
+  selectedFile = null;
 }
 
 function openDeleteModal(id) {
@@ -138,37 +164,60 @@ function closeDeleteModal() {
   document.getElementById('deleteOverlay').classList.remove('open');
 }
 
+async function uploadAvatar(file) {
+  const ext = file.name.split('.').pop();
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const { error } = await db.storage.from('avatars').upload(fileName, file, {
+    cacheControl: '3600',
+    upsert: false,
+  });
+  if (error) throw error;
+  const { data } = db.storage.from('avatars').getPublicUrl(fileName);
+  return data.publicUrl;
+}
+
 async function handleSubmit(e) {
   e.preventDefault();
   const id = document.getElementById('editId').value;
-  const payload = {
-    name: document.getElementById('inputName').value.trim(),
-    department: document.getElementById('inputDept').value.trim() || null,
-    position: document.getElementById('inputPosition').value.trim() || null,
-    bio: document.getElementById('inputBio').value.trim() || null,
-  };
-
   const saveBtn = document.getElementById('saveBtn');
   saveBtn.disabled = true;
   saveBtn.textContent = '保存中...';
 
-  let error;
-  if (id) {
-    ({ error } = await db.from('staff').update(payload).eq('id', id));
-  } else {
-    ({ error } = await db.from('staff').insert(payload));
+  try {
+    let avatarUrl = null;
+
+    if (selectedFile) {
+      avatarUrl = await uploadAvatar(selectedFile);
+    } else if (id) {
+      const existing = allStaff.find(s => s.id === id);
+      avatarUrl = existing?.avatar_url || null;
+    }
+
+    const payload = {
+      name: document.getElementById('inputName').value.trim(),
+      department: document.getElementById('inputDept').value.trim() || null,
+      position: document.getElementById('inputPosition').value.trim() || null,
+      bio: document.getElementById('inputBio').value.trim() || null,
+      avatar_url: avatarUrl,
+    };
+
+    let error;
+    if (id) {
+      ({ error } = await db.from('staff').update(payload).eq('id', id));
+    } else {
+      ({ error } = await db.from('staff').insert(payload));
+    }
+
+    if (error) throw error;
+
+    closeModal();
+    fetchStaff();
+  } catch (err) {
+    alert('保存に失敗しました: ' + err.message);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '保存';
   }
-
-  saveBtn.disabled = false;
-  saveBtn.textContent = '保存';
-
-  if (error) {
-    alert('保存に失敗しました: ' + error.message);
-    return;
-  }
-
-  closeModal();
-  fetchStaff();
 }
 
 async function handleDelete() {
@@ -188,6 +237,46 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/* 画像アップロード UI */
+const avatarUpload = document.getElementById('avatarUpload');
+const inputAvatar = document.getElementById('inputAvatar');
+
+avatarUpload.addEventListener('click', () => inputAvatar.click());
+
+avatarUpload.addEventListener('dragover', e => {
+  e.preventDefault();
+  avatarUpload.classList.add('drag-over');
+});
+avatarUpload.addEventListener('dragleave', () => avatarUpload.classList.remove('drag-over'));
+avatarUpload.addEventListener('drop', e => {
+  e.preventDefault();
+  avatarUpload.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFileSelect(file);
+});
+
+inputAvatar.addEventListener('change', () => {
+  if (inputAvatar.files[0]) handleFileSelect(inputAvatar.files[0]);
+});
+
+function handleFileSelect(file) {
+  if (file.size > 5 * 1024 * 1024) {
+    alert('ファイルサイズは5MB以内にしてください');
+    return;
+  }
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = document.getElementById('avatarPreviewImg');
+    const text = document.getElementById('avatarPreviewText');
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    text.style.display = 'none';
+    avatarUpload.classList.add('has-image');
+  };
+  reader.readAsDataURL(file);
 }
 
 document.getElementById('openModalBtn').addEventListener('click', openAddModal);
